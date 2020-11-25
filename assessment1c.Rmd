@@ -1,58 +1,66 @@
 ---
 title: "HDAT9700: Assessment 1C - Chapters 6, 7 and 8"
 output: github_document
-author: 
-date: "`r format(Sys.time(), '%d %B %Y')`"
+author: Mark Hanly
+date: 25 Nov 2020
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+# Set global chunk options to stop code and warnings from printing to the report
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
 
+# Load libraries
+library(ggplot2)
+library(nlme)
+library(dplyr)
+library(sjPlot)
+
+# Short name for the orthodont data
+orth <- nlme::Orthodont 
 ```
 
-### Submission instructions
-This is an R Markdown document---an example of *literate programming*, an approach which allows users to interweave text, statistical output and the code that produces that output. 
-
-To complete your assignment:   
-
-* Edit this file directly, interweaving text and R code as appropriate to answer the questions below. Remember to `Knit` the file to make sure everything is running smoothly. Detailed information on R Markdown is available [here](https://rmarkdown.rstudio.com/lesson-1.html), and there is a useful cheatsheet [here](https://www.rstudio.com/wp-content/uploads/2015/02/rmarkdown-cheatsheet.pdf).  
-
-* Use git to `commit` changes you make in this repo locally.   
-
-* `Push` the repo, together with this edited file and the corresponding `.md` file to GitHub Classroom.  
-
-You can `commit` and `push` as often as neccessary---your assessment will be graded on the most recent version of your repo at the assessment due date. 
-
-Good luck!
-
-
-***
-
-### Overview
-
-In this assignment we are going to analyse the `Orthodont` data, available in the `nlme` package. These data include longitudinal information from a study at the University of North Carolina Dental School. Investigators followed the growth of children from age 8 until age 14. Every two years they measured the distance between the pituitary and the pterygomaxillary fissure, two points that are easily identified on x-ray exposures of the side of the head.
-
-This data frame contains the following four variables:
-
-* **distance** A numeric vector of distances from the pituitary to the pterygomaxillary fissure (measured in mm). These distances are measured on x-ray images of the skull 
-
-* **age** a numeric vector of ages of the subject (in years)
-
-* **Subject** A unique person identifier indicating the subject on which the measurement was made. The levels are labelled M01 to M16 for the males and F01 to F13 for the females. 
-
-* **Sex** a binary variable with levels Male and Female
-
-As the `nlme` package is one of the core R packages, you don’t need to separately install it. To get started, you just need to load it into the workspace in R with `library(nlme)` command. We will also use the function ggplot to produce figures. Load this into the workspace with `library(gglopt2)`.
-
-Please provide the R code needed to answer the following exercises as well as your written answers to them.
-
-*** 
 
 ### Assignment
+
+***
+## Question 1
 
 1. Familiarise yourself with the Orthodont dataset. 
     i. How many rows (observations) are there in the dataset, and how many children are there in the dataset? [3 marks]
     ii. Provide frequencies (%) for the categories of the categorical variables, and median and 1st and 3rd quartiles for the continuous variables. [3 marks]
+    
+***
+
+**Solution 1(i)**
+
+```{r}
+n1 <- nrow(orth)
+n2 <- length(unique(orth$Subject))
+
+```
+
+There are `r n1` rows in the data and `r n2` children. 
+
+**Solution 1(ii)**
+
+```{r}
+# Distance
+summary(orth$distance) 
+
+# Age
+table(as.factor(orth$age))
+
+# Sex
+orth %>% select(Subject, Sex) %>% distinct() %>% group_by(Sex) %>% summarise(n=n(), pct=round(100*n()/nrow(.) ,digits=1))
+```
+
+* The median distance across all ages and time points is 23.75mm, interquartile range = 22-26mm 
+* 25% of records are at ages 8 years, 10 years, 12 years and 14 years. 
+* 11 out of 27 children (41%) are girls and 16/27 children (59%) are boys
+
+***
+
+## Question 2
 
 2. In this assignment, we are interested in modelling the variable **distance** as a function of **age** and **sex**. 
     i) What is the multilevel structure of this dataset? [3 marks]
@@ -66,11 +74,106 @@ Please provide the R code needed to answer the following exercises as well as yo
         labs(x = "Age (years)", y = " Distance (pituitary to pterygomaxillary fissure) (mm) ", colour= "Sex")
     ```
 
+***
+
+**Solution 2(i)** 
+
+The data are a two level hierachy with observations at level 1 nested within children at level 2. Level 1 variables (observations) are distance and age. Level 2 variables (child) are Subject and Sex.
+
+**Solution 2(ii)** 
+
+It may be appropriate to model age as a random effect because it is plausible that the relationship between age and pituitary-pterygomaxillary fissure distance will vary between children due to unmeasured factors (such as environment, nutritional intake or genetic factors). By treating age as a random effect in the analysis we can capture the fact that children don't all grow at the same rate and quantify this variation in the model.
+
+**Solution 2(iii)** 
+
+``` {r, eval=TRUE}
+scatter <- ggplot(orth, aes(age, distance, color= Sex))
+scatter + geom_point() + geom_smooth(method="lm", se=TRUE) + 
+    facet_wrap(~Sex) + 
+    labs(x = "Age (years)", y = " Distance (pituitary to pterygomaxillary fissure) (mm) ", colour= "Sex")
+```
+
+From this exploratory data analysis, we can see that distance increases with age, on average, for both boys and girls. Boys have a higher distance than girls on average at age 8 (around 22.5mm versus 21.5mm) and the slope appears to be steeper for boys, who have an average distance of around 27, at age 14 compared to 24mm for girls. 
+
+***
+
+## Question 3
+
 3. We will now begin to build a regression model to further investigate the relationship between **distance**, **age** and **sex**. We would like to test the hypothesis that age and sex are significantly related to distance. 
     i) Create a single-level intercept-only model for distance. [3 marks]
     ii) Create a variance-components (intercept only) model for distance with a random intercept. [3 marks] 
     iii) Perform a suitable test to compare the models in 3i) and 3b). [3 marks]
     iv) In this study, is it justified to use a hierarchical model? [6 marks]
+
+
+***
+
+**Solution 3(i)**
+
+```{r}
+m0 <- lm(distance~1, data=orth)
+summary(m0)
+```
+* The average distance across all subjects and timepoints is 24mm
+
+**Solution 3(ii)**  
+
+```{r}
+m1 <- lme(distance~1, data=orth, random=~1|Subject, method ="ML")
+summary(m1)
+
+# Level 2 variance
+VarCorr(m1)[1]
+```
+
+* The estimated variance of the child residuals is $1.889^2 = 3.57mm$
+
+**Solution 3(iii)**
+
+```{r}
+# LR test using anova function 
+anova(m1, m0)
+
+
+# LR test by hand
+
+m0ll <- logLik(m0)
+m1ll <- logLik(m1)
+
+teststat <- -2*m0ll - (-2*m1ll)
+
+p <- 1-pchisq(teststat, df=1)
+
+cat(paste("log likelihood for single level model:", round(m0ll, digits=2)))
+cat(paste("log likelihood for intercept-only multilevel model:", round(m0ll, digits=2)))
+cat(paste("Test statistic:", round(teststat, digits=2)))
+cat("p value = ", p)
+
+```
+* The test statistic for the likelihood ratio test comparing the single level model for distance to the random intercept model is `r round(teststat, digits=2)` on 1 degree of freedom. It would be highly unlikely to see a test statistic this high if the single level model was a better fit, therefore we reject that hypothesis and conclude that the the random intercept model is a better model for the data.
+
+**Solution 3(iv)** 
+
+From the comparison of the single level model to the intercept-only model, it does appear justified to use a hierarchical model. To further support this decision we can calculate the Variance Components Coefficient (VPC), which quantifies the proportion of variance that can be attributed to observations over time (level 1) and individuals (level 2).
+
+```{r}
+var <- VarCorr(m1)
+var
+
+vpc <- as.numeric(var[2])/(as.numeric(var[1]) + as.numeric(var[2]))
+
+```
+
+* The level 1 variance is `r round(as.numeric(var[1]), digits = 1)` 
+* The level 2 variance is `r round(as.numeric(var[2]), digits = 1)` 
+* The variance partition coefficient is `r round(vpc, digits=2)` indicating that around 58% of the variation in distance is attributable to difference between children. This is a very high proportion attributable to the higher level of the model, further supporting the choice of a hierarchical model 
+
+
+***
+
+
+
+## Question 4
 
 4. We will now incorporate the variable **age** into the model created in 3ii) above. 
     i) Create a longitudinal multilevel linear model with random intercept only to investigate the effect of age on distance (distance ~ age). [3 marks]
@@ -79,6 +182,115 @@ Please provide the R code needed to answer the following exercises as well as yo
     iv)  What is the sign of the estimated covariance parameter from the random part of the model, and what does this suggest about the relationship between random intercepts and random slopes? [6 marks]
     v) Draw a plot to help assess whether the posterior estimates of the random intercepts and random slopes are normally distributed. [6 marks]
     vi) In this study, does the use of a random slope for age improve the goodness-of-fit of the model? [3 marks] 
+    
+*** 
+
+**Solution 4(i)** 
+
+```{r}
+m2 <- lme(distance ~ 1 + age, data=orth, random = ~1|Subject)
+summary(m2)
+```
+
+* This model indicates that for the average child, a one year increase in age is associated with a 0.66mm increase in distance.
+
+**Solution 4(ii)**     
+```{r}
+# Fit the model
+m3 <- lme(distance ~ 1 + age, data=orth, random = ~1+age|Subject)
+summary(m3)
+```
+
+**Solution 4(iii)**    
+
+* From this random intercept-random slope model we can see that the variation in the random slope for age is quite small ($\sigma_{u1}^2 = 0.05$)
+
+```{r}
+anova(m2,m3)
+```
+
+* The test statistic for the likelihood ratio test comparing the random intercept model (m2) to the random slope model (m3) is 4.366 on 1 degree of freedom, p=0.11. This suggests that the random intercept model is not an improvement. The data do not suggest that the effect of age on distance varies between children. 
+
+**Solution 4(iv)**    
+
+The sign of the covariance parameter is negative, indicating a negative association between random intercepts and random slopes. In other words, under this model children with above average random intercepts are expected to have below average random slopes, and children with below average random intercepts are expected to have above average random slopes. This would produce a "fanning in" pattern for the regression lines for individual children.
+
+However, looking at the confidence intervals for the covariance term using the `intervals()` function highlights that the covariance is estimated very imprecisely: 
+
+```{r}
+# Print the variance estimates for the random part of the model
+ci <- intervals(m3)
+ci$reStruct
+```
+
+So although the point estimate is negative, taking the confidence intervals into account we can see that the covariance parameter is not statistically distinguishable from zero. The reason for this imprecise estimate becomes apparent in the answer to the next question.
+
+
+**Solution 4(v)**    
+
+```{r}
+# Save the posterior estimates of the random effects from the previous model
+post3 <- as.data.frame(ranef(m3)) 
+
+# Posterior estimates of random intercepts
+
+## Histogram
+hist(post3$`(Intercept)`, main="Histogram of posterior estimates of random intercepts", xlab="Random intercept")
+
+## QQ plot
+qqnorm(post3$`(Intercept)`, main="QQ plot of the posterior estimates of random intercepts")
+
+# Posterior estimates of random slopes
+
+## Histogram
+hist(post3$age, main="Histogram of posterior estimates of random slopes for age", xlab="Random effect")
+
+## QQ plot
+qqnorm(post3$age, main="QQ plot of the posterior estimates of random slopes for age") 
+```
+
+* The plots indicate that the posterior estimates of the random intercepts and random slopes appear slightly skewed. We can investigate further by plotting a scatterplot of the random intercepts versus random slopes. 
+
+```{r}
+
+post3 %>% 
+    ggplot(aes(x=age, y = `(Intercept)`)) + 
+               geom_point() + 
+               labs(title = "Scatter plot of random intercepts and random slopes", 
+                    x= "Random slopes", y = "Random intercepts")  
+
+```
+
+
+* The scatter plot indicates that there is an outlier with a noticeably low intercept and high slope. This individual is likely influencing the observed negative slope between the random intercepts and random slopes; without this individual there is no obvious negative association. Let's have a closer look at this outlier:
+
+```{r}
+
+# Extract ID for outlier
+post3 %>% 
+    tibble::rownames_to_column('Subject') %>%
+    filter(age > 0.4) 
+
+
+# Examine data for outlier
+orth %>% 
+    filter(Subject=="M13")
+```
+
+Further inspection shows that the outlier is child M13 - a boy who's distance went form 17mm at age 8 to 29.5 at age 14. Quite a growth spurt, compared to the other children in the sample! This outlier is skewing the data and resulting in the imprecise estimate of the level 2 covariance parameter.
+
+
+**Solution 4(vi)**    
+
+No, specifying a random effect for age does not improve the goodness-of-fit. We can see this from the non-significant LR test comparing the random slope to the random intercept model and also from the limited decrease in AIC when the random slope is included.
+
+
+    
+
+
+***
+
+## Question 5
 
 5. In this exercise, we will test whether the relationship between **age** and **distance** is improved by the use of a non-linear quadratic function in the regression model (i.e. a growth curve model). 
     i) Based on your results in section 4 above, which model will you use as the basis for your growth curve model? **Justify your choice** [3 marks]
@@ -87,8 +299,47 @@ Please provide the R code needed to answer the following exercises as well as yo
     	* Random intercept and slope (4ii)?
     	
     ii) Now perform a growth curve analysis by adding the term `age^2` to the model you have selected in 5i). [3 marks] 
-    iii) Perfthe two models: 5ii) and either 4i) or 4ii). [3 marks]
+    iii) Perform a suitable test to compare the two models in 5ii) and either 4i) or 4ii). [3 marks]
     iv) In this study, does the use of a non-linear quadratic term for age improve the goodness-of-fit of the model? [3 marks]
+
+***
+
+**Solution 5(i)**
+
+Based on the previous analysis, we will specify the random part of the model as random intercept only. This is based on the non-significant likelihood test comparing the random intercept model to the random slope model, and the small change in AIC (we would expect a larger drop in AIC if the random slope model was an improvement).
+
+**Solution 5(ii)** 
+
+```{r}
+m4 <- lme(distance ~ 1 + age + I(age^2), data=orth, random = ~1|Subject)
+summary(m4)
+```
+
+* The parameter for the quadratic term is positive, suggesting that distance increases at a faster rate with age, but it is not statistically significant.
+
+**Solution 5(iii)** 
+
+```{r}
+# Refit with maximum likelihood to allow comparison
+
+m2_ml <- lme(distance ~ 1 + age, data = orth, random = ~1|Subject, method = "ML")
+m4_ml <- lme(distance ~ 1 + age + I(age^2), data = orth, random = ~1|Subject, method = "ML")
+
+anova(m2_ml, m4_ml)
+```
+* The LR test indicates that adding the quadratic term did not improve the model fit
+
+**Solution 5(iv)**
+
+* No, including the quadratic term did not improve the goodness of fit. This is evident from the non-significant p-value for the quadratic term, the non-significant result from the likelihood ratio test, and from the increase in AIC comparing the model with the linear term to the model with the quadratic term.
+
+
+
+
+
+***
+
+## Question 6
 
 6. For our final model, we will now add the fixed effect **sex** to our model of the relationship between distance and age. 
     i) Which model would you choose as your final random effects model? [3 marks]
@@ -98,25 +349,128 @@ Please provide the R code needed to answer the following exercises as well as yo
     	* Random intercept and slope with quadratic term (growth curve model)?
     ii) Add the fixed effect **Sex** to the model chosen in 6i). Is there a significant relationship between distance and sex? [3 marks]
     iii) Add an interaction term between the variables **sex** and **age**. Is this interaction significant? What does that mean? [6 marks]
-    
-7. Based on your final model, write a paragraph to report the main findings of your analysis. Include the main statistical results supported by key values from the output (hint: use the intervals() function to obtain 95% intervals for your regression parameters). Provide a very brief clinical interpretation of your findings (hint: do the results support the hypothesis that there is a relationship between distance, age and sex?). [20 marks]
+
+***
+
+**Solution 6(i)**    
+The analyses in questions 4 and 5 suggest that the preferred model is the random intercept only with no quadratic term (linear model).
+
+**Solution 6(ii)** 
+
+```{r}
+m5 <- lme(distance ~ 1 + age + Sex, data=orth, random = ~1|Subject)
+
+summary(m5)
+
+```
+* From this model, the estimated parameter for Sex is -2.32 (se=0.76, p<0.01). This indicates that there is a significant relationship between distance and sex, with distance lower for girls by 2.3mm on average.  
+
+
+**Solution 6(iii)**
+
+```{r}
+m6 <- lme(distance ~ 1 + age + Sex + age:Sex, data=orth, random = ~1|Subject)
+
+summary(m6)
+
+```
+* The interaction term is significant, which indicates that the relationship between age and distance is different for boys and girls. The estimated parameter for the interaction term is -0.30 (se=0.12, p <0.05). The negative sign here indicates that the relationship between distance and age is weaker for girls, as suggested by the exploratory analysis.
+
+* The estimated parameter for `Sex` is positive and non-significant here. **BUT** bear in mind that in the presence of the interaction term, this parameter is interpreted as the difference between girls and boys at the baeline value of age i.e. _at age = 0_. Making inferences about the distance measure for newborns is not sensible because that is extrapolating well beyond the observed range of ages in the data. In the final question I will recode the `age` variable to simplify the interpretation.
+
+To get a better idea of the interaction between age and sex on distance lets predict from the fitted model and plot the result:
+
+```{r}
+
+orth$pred <- predict(m6)
+
+ggplot(orth) + 
+    geom_point(aes(x=age, y=distance, color=Sex)) + 
+    geom_line(aes(x=age, y=pred, group=Subject, color=Sex))
+```
+
+* We can see that the fitted lines for boys are slighly steeper than the fitted lines for girls.
+
+
+
 
 
 ***
 
-### Student declaration
+## Question 7
 
-**_Instructions: Indicate that you understand and agree with the following three statements by typing an x in the square brackets below, e.g. [x]._** 
+7. Based on your final model, write a paragraph to report the main findings of your analysis. Include the main statistical results supported by key values from the output (hint: use the intervals() function to obtain 95% intervals for your regression parameters). Provide a very brief clinical interpretation of your findings (hint: do the results support the hypothesis that there is a relationship between distance, age and sex?). [20 marks]
 
-I declare that this assessment item is my own work, except where acknowledged, and has not been submitted for academic credit elsewhere or previously, or produced independently of this course (e.g. for a third party such as your place of employment) and acknowledge that the assessor of this item may, for the purpose of assessing this item: (i) Reproduce this assessment item and provide a copy to another member of the University; and/or (ii) Communicate a copy of this assessment item to a plagiarism checking service (which may then retain a copy of the assessment item on its database for the purpose of future plagiarism checking).  
+**Solution 7**
 
-- [ ] I understand and agree
+To aid interpretation I will first recode the age variable by subtracting 8 from each value of age. This means that the baseline group (i.e. the interpretation for the intercept parameter) will be boys aged 8 rather than boys aged 0. The model fit using the recoded values of age is exaclty the same as the original model. The code is not printed to the report so review the underlying .Rmd file if you want to see the code. 
 
-I certify that I have read and understood the University Rules in respect of Student Academic Misconduct.  
+```{r, include = FALSE}
+# Recode age to aid interpretation of the model parameters
+orth$age8 = orth$age-8
 
-- [ ] I understand and agree
+# Refit the model using ML and the new coding of age
+m6_ml <- lme(distance ~ 1 + age + Sex + age:Sex, data=orth, random = ~1|Subject, method = "ML")
+m7 <- lme(distance ~ 1 + age8 + Sex + age8:Sex, data=orth, random = ~1|Subject, method = "ML")
 
-I have a backup copy of the assessment.  
+# We can satisfy ouselves that the model with age recoded is essentially the same 
+anova(m6_ml, m7)
 
-- [ ] I understand and agree
+# Summarise the final model
+summary(m7)
+
+#  Obtain confidence intervals for the parameter estimates
+intervals(m7)
+
+# Extrat variance estimates
+var7 <- VarCorr(m7)
+
+# Calculate VPC
+vpc7 <- as.numeric(var7[1])/(as.numeric(var7[1]) + as.numeric(var7[2]))
+vpc7_short <- round(100*vpc7, digits=2)
+
+# Print VPC
+vpc7_short
+
+```
+
+**Summary of findings** 
+
+The aim of this analysis was to model the relationship between the pituitary and the pterygomaxillary fissure distance (distance), measured in millimetres (mm), and age and sex for children. The data comprised records on 27 children (16 boys and 11 girls), who had their distance measured by x-ray on four occasions, once every two years between the ages of 8 and 14. 
+
+Our final model for pituitary-pterygomaxillary fissure distance was a random intercept model with age, sex and the interaction between age and sex included in the fixed part of the model. The final model is presented below.
+
+```{r}
+sjPlot::tab_model(m7, show.r2 = FALSE)
+```
+
+The estimated variance of the level 2 (Subject) residuals was 3.03mm, and the estimated level 1 (Observation) variance was 1.87mm. After controlling for age and sex, around 62% of the variation in distance was between children and 38% of the variation in distance was between measurement occasions. 
+
+The average distance for 8-year-old boys was 22.6mm (95% CI: 21.6, 23.7) and the estimated age parameter was 0.78 (95% CI: 0.63, 0.94). This indicates that for boys the average distance increased by 0.78mm with each year of age between 8 and 14 years.
+
+At age 8, girls had a shorter distance compared to boys by -1.4mm, but the estimated difference in distance between boys and girls at this age was not significant (95% CI: -3.1, 0.3; p = 0.103). The interaction term between sex and age was -0.30, (95% CI: -0.54, -0.07; p < 0.05), confirming that the increase in distance associated with age was significantly lower for girls compared to boys.
+
+The figure below plots the raw data together with the model predicted Subject-specific lines and average predicted growth for boys and girls.
+
+```{r, echo = FALSE}
+
+# Predictions based on fixed part of the model
+orth$p0 <- predict(m7, level = 0)
+
+# Predictions based on fixed and random part of the model
+orth$p1 <- predict(m7, level = 1)
+
+# Plot
+ggplot(data = orth, aes(x=age, y = distance)) +
+    geom_point(alpha = 0.5, color = "grey") + # Raw data
+    geom_line(aes(x=age, y = p1, group=Subject, color = Sex), alpha = 0.3) + # Subject-specific lines
+    geom_line(aes(x=age, y = p0, color = Sex), size = 2) + # Average lines for male and female
+    labs(x = "Distance (mm)", y = "Age (years)", title = "Final model predictions")
+```
+
+Clinically, the model results indicate that the distance between the pituitary and the pterygomaxillary fissure at age 8 can be expected to vary significantly between children. By age 8, boys are expected to have a higher distance compared to girls on average, but it wouldn't be unusual to see girl with an above average distance for a boy or a boy with a below average distance for a girl at age 8. The fissure distance increases linearly with age for both boys and girls between ages 8 to 14, but the increase is steeper for boys (around 0.78mm per year) compared to girls (around 0.48mm per year).
+
+***
+
+
 
